@@ -8,6 +8,7 @@ use core::fmt::Write;
 #[repr(C)]
 #[derive(Debug)]
 pub struct TrapFrame {
+    // pub pc: usize,   // pc, x0 is useless TODO replace
     pub zero: usize, // x0
     pub ra: usize,   // x1
     pub sp: usize,   // x2
@@ -46,7 +47,7 @@ impl TrapFrame {
     unsafe fn as_mut_words(&mut self) -> &mut [usize] {
         core::slice::from_raw_parts_mut(
             self as *mut _ as *mut _,
-            core::mem::size_of::<TrapFrame>(),
+            core::mem::size_of::<TrapFrame>() / core::mem::size_of::<usize>(),
         )
     }
 }
@@ -103,7 +104,43 @@ pub unsafe fn atomic_emulation(frame: &mut TrapFrame) -> bool {
 
 // TODO override _start_trap in riscv-rt
 
-// TODO this is giga UB, instead make trapframe mutable upstream
+#[repr(C)] // Copy of the impl in riscv crate
+pub union Vector {
+    handler: unsafe extern "C" fn(),
+    reserved: usize,
+}
+
+extern "C" {
+    pub static __INTERRUPTS: [Vector; 12];
+}
+
+#[link_section = ".trap.rust"]
+#[export_name = "_start_trap_atomic_rust"]
+pub extern "C" fn start_trap_rust(trap_frame: *const TrapFrame) {
+    extern "C" {
+        fn ExceptionHandler(trap_frame: &TrapFrame);
+        fn DefaultHandler();
+    }
+
+    unsafe {
+        let cause = riscv::register::mcause::read();
+        if cause.is_exception() {
+            ExceptionHandler(&*trap_frame)
+        } else {
+            let code = cause.code();
+            if code < __INTERRUPTS.len() {
+                let h = &__INTERRUPTS[code];
+                if h.reserved == 0 {
+                    DefaultHandler();
+                } else {
+                    (h.handler)();
+                }
+            } else {
+                DefaultHandler();
+            }
+        }
+    }
+}
 
 // TODO remove this
 pub struct Uart;

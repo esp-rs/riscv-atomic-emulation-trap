@@ -8,8 +8,7 @@ use core::fmt::Write;
 #[repr(C)]
 #[derive(Debug)]
 pub struct TrapFrame {
-    // pub pc: usize,   // pc, x0 is useless TODO replace
-    pub zero: usize, // x0
+    pub pc: usize,   // pc, x0 is useless
     pub ra: usize,   // x1
     pub sp: usize,   // x2
     pub gp: usize,   // x3
@@ -73,12 +72,21 @@ impl TrapFrame {
     }
 }
 
+macro_rules! amo {
+    ($frame:ident, $rs1:ident, $rs2:ident, $rd:ident, $e:expr) => {
+        let tmp = $frame[$rs1];
+        let a = *(tmp as *const _);
+        let b = $frame[$rs2];
+        $frame[$rd] = a;
+        *(tmp as *mut _)= $e(a, b);
+    };
+}
+
 pub unsafe fn atomic_emulation(frame: &mut TrapFrame) -> bool {
     static mut S_LR_ADDR: usize = 0;
 
-    let mepc = riscv::register::mepc::read();
     // deref the addr to find the instruction we trapped on.
-    let insn: usize = *(mepc as *const _);
+    let insn: usize = *(frame.pc as *const _);
     // TODO how to know if insn is executable?
 
     if (insn & 0b1111111) != 0b0101111 {
@@ -116,6 +124,42 @@ pub unsafe fn atomic_emulation(frame: &mut TrapFrame) -> bool {
                 frame[rd] = 0;
                 S_LR_ADDR = 0;
             }
+        }
+        0b00001 => {
+            /* AMOSWAP */
+            amo!(frame, rs1, rs2, rd, |_, b| b);
+        }
+        0b00000 => {
+            /* AMOADD */
+            amo!(frame, rs1, rs2, rd, |a, b| a + b);
+        }
+        0b00100 => {
+            /* AMOXOR */
+            amo!(frame, rs1, rs2, rd, |a, b| a ^ b);
+        }
+        0b01100 => {
+            /* AMOAND */
+            amo!(frame, rs1, rs2, rd, |a, b| a & b);
+        }
+        0b01000 => {
+            /* AMOOR */
+            amo!(frame, rs1, rs2, rd, |a, b| a | b);
+        }
+        0b10000 => {
+            /* AMOMIN */
+            amo!(frame, rs1, rs2, rd, |a, b| (a as isize).min(b as isize));
+        }
+        0b10100 => {
+            /* AMOMAX */
+            amo!(frame, rs1, rs2, rd, |a, b| (a as isize).max(b as isize));
+        }
+        0b11000 => {
+            /* AMOMINU */
+            amo!(frame, rs1, rs2, rd, |a: usize, b| a.min(b));
+        }
+        0b11100 => {
+            /* AMOMAXU */
+            amo!(frame, rs1, rs2, rd, |a: usize, b| a.max(b));
         }
         _ => return false,
     }
@@ -162,7 +206,7 @@ unsafe fn atomic_exception_handler(frame: &mut TrapFrame) {
     if atomic_emulation(frame) {
         writeln!(Uart, "Trap after: {:?}", frame).ok();
         // successfull emulation, move the mepc
-        riscv::register::mepc::write(riscv::register::mepc::read() + core::mem::size_of::<usize>())
+        frame.pc += core::mem::size_of::<usize>();
     } else {
         ExceptionHandler(&frame.as_riscv_rt_trap_frame());
     }

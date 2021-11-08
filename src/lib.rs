@@ -50,6 +50,27 @@ impl TrapFrame {
             core::mem::size_of::<TrapFrame>() / core::mem::size_of::<usize>(),
         )
     }
+
+    fn as_riscv_rt_trap_frame(&self) -> riscv_rt::TrapFrame {
+        riscv_rt::TrapFrame {
+            ra: self.ra,
+            t0: self.t0,
+            t1: self.t1,
+            t2: self.t2,
+            t3: self.t3,
+            t4: self.t4,
+            t5: self.t5,
+            t6: self.t6,
+            a0: self.a0,
+            a1: self.a1,
+            a2: self.a2,
+            a3: self.a3,
+            a4: self.a4,
+            a5: self.a5,
+            a6: self.a6,
+            a7: self.a7,
+        }
+    }
 }
 
 pub unsafe fn atomic_emulation(frame: &mut TrapFrame) -> bool {
@@ -102,30 +123,24 @@ pub unsafe fn atomic_emulation(frame: &mut TrapFrame) -> bool {
     true
 }
 
-// TODO override _start_trap in riscv-rt
+use riscv_rt::Vector;
 
-#[repr(C)] // Copy of the impl in riscv crate
-pub union Vector {
-    handler: unsafe extern "C" fn(),
-    reserved: usize,
-}
-
-extern "C" {
+// These are defined in the riscv-rt crate
+extern "Rust" {
     pub static __INTERRUPTS: [Vector; 12];
+}
+extern "C" {
+    fn ExceptionHandler(trap_frame: &riscv_rt::TrapFrame);
+    fn DefaultHandler();
 }
 
 #[link_section = ".trap.rust"]
 #[export_name = "_start_trap_atomic_rust"]
-pub extern "C" fn start_trap_rust(trap_frame: *const TrapFrame) {
-    extern "C" {
-        fn ExceptionHandler(trap_frame: &TrapFrame);
-        fn DefaultHandler();
-    }
-
+pub extern "C" fn _start_trap_atomic_rust(trap_frame: *mut TrapFrame) {
     unsafe {
         let cause = riscv::register::mcause::read();
         if cause.is_exception() {
-            ExceptionHandler(&*trap_frame)
+            atomic_exception_handler(&mut *trap_frame)
         } else {
             let code = cause.code();
             if code < __INTERRUPTS.len() {
@@ -139,6 +154,17 @@ pub extern "C" fn start_trap_rust(trap_frame: *const TrapFrame) {
                 DefaultHandler();
             }
         }
+    }
+}
+
+unsafe fn atomic_exception_handler(frame: &mut TrapFrame) {
+    writeln!(Uart, "Trap before: {:?}", frame).ok();
+    if atomic_emulation(frame) {
+        writeln!(Uart, "Trap after: {:?}", frame).ok();
+        // successfull emulation, move the mepc
+        riscv::register::mepc::write(riscv::register::mepc::read() + core::mem::size_of::<usize>())
+    } else {
+        ExceptionHandler(&frame.as_riscv_rt_trap_frame());
     }
 }
 

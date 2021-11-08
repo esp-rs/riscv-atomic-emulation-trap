@@ -49,7 +49,7 @@ _start_trap:
     STORE t6, 31*REGBYTES(sp)
 
     add a0, sp, zero
-    jal ra, _start_trap_rust
+    jal ra, _start_trap_atomic_rust
 
     LOAD zero, 0*REGBYTES(sp)
     LOAD ra, 1*REGBYTES(sp)

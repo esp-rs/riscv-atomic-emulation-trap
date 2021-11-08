@@ -2,8 +2,6 @@
 
 use riscv;
 
-use core::fmt::Write;
-
 #[allow(missing_docs)]
 #[repr(C)]
 #[derive(Debug)]
@@ -94,28 +92,24 @@ pub unsafe fn atomic_emulation(frame: &mut TrapFrame) -> bool {
     }
 
     let reg_mask = 0b11111;
+    // destination register
     let rd = (insn >> 7) & reg_mask;
+    // source 1 register
     let rs1 = (insn >> 15) & reg_mask;
+    // source 2 register
     let rs2 = (insn >> 20) & reg_mask;
 
     let frame = frame.as_mut_words();
 
-    writeln!(Uart, "RD({}) = {}", rd, frame[rd]).ok();
-    writeln!(Uart, "RS1({}) = {}", rs1, frame[rs1]).ok();
-    writeln!(Uart, "RS2({}) = {}", rs2, frame[rs2]).ok();
-
     match insn >> 27 {
         0b00010 => {
             /* LR */
-            writeln!(Uart, "Emulating LR").ok();
             S_LR_ADDR = frame[rs1];
             let tmp: usize = *(S_LR_ADDR as *const _);
-            writeln!(Uart, "tmp = {}", tmp).ok();
             frame[rd] = tmp;
         }
         0b00011 => {
             /* SC */
-            writeln!(Uart, "Emulating SC").ok();
             let tmp: usize = frame[rs1];
             if tmp != S_LR_ADDR {
                 frame[rd] = 1;
@@ -202,27 +196,10 @@ pub extern "C" fn _start_trap_atomic_rust(trap_frame: *mut TrapFrame) {
 }
 
 unsafe fn atomic_exception_handler(frame: &mut TrapFrame) {
-    writeln!(Uart, "Trap before: {:?}", frame).ok();
     if atomic_emulation(frame) {
-        writeln!(Uart, "Trap after: {:?}", frame).ok();
         // successfull emulation, move the mepc
         frame.pc += core::mem::size_of::<usize>();
     } else {
         ExceptionHandler(&frame.as_riscv_rt_trap_frame());
-    }
-}
-
-// TODO remove this
-pub struct Uart;
-
-extern "C" {
-    pub fn uart_tx_one_char(byte: u8) -> i32;
-}
-
-impl core::fmt::Write for Uart {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        Ok(for &b in s.as_bytes() {
-            unsafe { uart_tx_one_char(b) };
-        })
     }
 }

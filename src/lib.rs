@@ -1,43 +1,73 @@
-#![no_std]
+//! RISC-V atomic emulation trap handler
+//!
+//! A replacement trap handler to emumlate the atomic extension on chips that do not have it in hardware, to be used in conjunction with the `riscv-rt` crate.
+//! 
+//! ## Usage
+//!
+//! As simple as including the crate in your project:
+//! ```rust
+//! use riscv_atomic_emulation_trap as _;
+//! ```
+//! 
+//! ## How it works
+//!
+//! Instead of using the real target (non-atomic) for a given chip, it's possible to target the closest target that also has the atomic extension. For example, the `esp32c3` is
+//! `riscv32imc`, therefore to use this crate you would use `riscv32imac`. The final binary will have (atomic) instructions that the hardware does not support;
+//! when the hardware finds on of these instructions it will trap, this is where this crate comes in.
+//!
+//! This crate overrides the default trap handler of the `riscv-rt` crate. By doing so it is possible to decode the instruction, check if is an instruction we can emulate,
+//! emulate it, and finally move the pc (program counter) forward to continue on with the program. Any instructions that cannot be emulated will be reported to the
+//! users exception handler.
+//!
+//! Advantages of this crate
+//! 
+//! * Non-invasive. Other atomic emulation solutions require their dependancy in third party crates. However with this crate you just have to include it in your final binary.
+//!
+//! Disadvantages of this crate
+//! 
+//! * Peformance penalty associated with context switching, emulating the instruction, then restoring the modified context. Based on limiting testing, you can expect a 2-4x slower execution compared to
+//! **natively** supported instructions.
 
-use riscv;
+#![cfg_attr(not(test), no_std)]
+
+use riscv::{self, register::mcause};
 
 #[allow(missing_docs)]
 #[repr(C)]
 #[derive(Debug)]
 pub struct TrapFrame {
-    pub pc: usize,   // pc, x0 is useless
-    pub ra: usize,   // x1
-    pub sp: usize,   // x2
-    pub gp: usize,   // x3
-    pub tp: usize,   // x4
-    pub t0: usize,   // x5
-    pub t1: usize,   // x6
-    pub t2: usize,   // x7
-    pub fp: usize,   // x8
-    pub s1: usize,   // x9
-    pub a0: usize,   // x10
-    pub a1: usize,   // x11
-    pub a2: usize,   // x12
-    pub a3: usize,   // x13
-    pub a4: usize,   // x14
-    pub a5: usize,   // x15
-    pub a6: usize,   // x16
-    pub a7: usize,   // x17
-    pub s2: usize,   // x18
-    pub s3: usize,   // x19
-    pub s4: usize,   // x20
-    pub s5: usize,   // x21
-    pub s6: usize,   // x22
-    pub s7: usize,   // x23
-    pub s8: usize,   // x24
-    pub s9: usize,   // x25
-    pub s10: usize,  // x26
-    pub s11: usize,  // x27
-    pub t3: usize,   // x28
-    pub t4: usize,   // x29
-    pub t5: usize,   // x30
-    pub t6: usize,   // x31
+    pub pc: usize,  // pc, x0 is useless
+    pub ra: usize,  // x1
+    pub sp: usize,  // x2
+    pub gp: usize,  // x3
+    pub tp: usize,  // x4
+    pub t0: usize,  // x5
+    pub t1: usize,  // x6
+    pub t2: usize,  // x7
+    pub fp: usize,  // x8
+    pub s1: usize,  // x9
+    pub a0: usize,  // x10
+    pub a1: usize,  // x11
+    pub a2: usize,  // x12
+    pub a3: usize,  // x13
+    pub a4: usize,  // x14
+    pub a5: usize,  // x15
+    pub a6: usize,  // x16
+    pub a7: usize,  // x17
+    pub s2: usize,  // x18
+    pub s3: usize,  // x19
+    pub s4: usize,  // x20
+    pub s5: usize,  // x21
+    pub s6: usize,  // x22
+    pub s7: usize,  // x23
+    pub s8: usize,  // x24
+    pub s9: usize,  // x25
+    pub s10: usize, // x26
+    pub s11: usize, // x27
+    pub t3: usize,  // x28
+    pub t4: usize,  // x29
+    pub t5: usize,  // x30
+    pub t6: usize,  // x31
 }
 
 impl TrapFrame {
@@ -71,12 +101,12 @@ impl TrapFrame {
 }
 
 macro_rules! amo {
-    ($frame:ident, $rs1:ident, $rs2:ident, $rd:ident, $e:expr) => {
+    ($frame:ident, $rs1:ident, $rs2:ident, $rd:ident, $operation:expr) => {
         let tmp = $frame[$rs1];
         let a = *(tmp as *const _);
         let b = $frame[$rs2];
         $frame[$rd] = a;
-        *(tmp as *mut _)= $e(a, b);
+        *(tmp as *mut _) = $operation(a, b);
     };
 }
 
@@ -165,6 +195,7 @@ use riscv_rt::Vector;
 
 // These are defined in the riscv-rt crate
 extern "Rust" {
+    #[doc(hidden)]
     pub static __INTERRUPTS: [Vector; 12];
 }
 extern "C" {
@@ -174,32 +205,37 @@ extern "C" {
 
 #[link_section = ".trap.rust"]
 #[export_name = "_start_trap_atomic_rust"]
-pub extern "C" fn _start_trap_atomic_rust(trap_frame: *mut TrapFrame) {
+#[doc(hidden)]
+pub extern "C" fn _start_trap_atomic_rust(frame: *mut TrapFrame) {
     unsafe {
-        let cause = riscv::register::mcause::read();
-        if cause.is_exception() {
-            atomic_exception_handler(&mut *trap_frame)
-        } else {
-            let code = cause.code();
-            if code < __INTERRUPTS.len() {
-                let h = &__INTERRUPTS[code];
-                if h.reserved == 0 {
-                    DefaultHandler();
-                } else {
-                    (h.handler)();
+        let cause = mcause::read();
+        let frame = &mut *frame;
+        match cause.cause() {
+            mcause::Trap::Exception(e) => match e {
+                mcause::Exception::IllegalInstruction => {
+                    if atomic_emulation(frame) {
+                        // successfull emulation, move the mepc
+                        frame.pc += core::mem::size_of::<usize>();
+                    } else {
+                        ExceptionHandler(&frame.as_riscv_rt_trap_frame())
+                    }
                 }
-            } else {
-                DefaultHandler();
+                _ => ExceptionHandler(&frame.as_riscv_rt_trap_frame()),
+            },
+            mcause::Trap::Interrupt(_) => {
+                let code = cause.code();
+                if code < __INTERRUPTS.len() {
+                    let h = &__INTERRUPTS[code];
+                    if h.reserved == 0 {
+                        DefaultHandler();
+                    } else {
+                        (h.handler)();
+                    }
+                } else {
+                    DefaultHandler();
+                }
             }
         }
     }
 }
 
-unsafe fn atomic_exception_handler(frame: &mut TrapFrame) {
-    if atomic_emulation(frame) {
-        // successfull emulation, move the mepc
-        frame.pc += core::mem::size_of::<usize>();
-    } else {
-        ExceptionHandler(&frame.as_riscv_rt_trap_frame());
-    }
-}

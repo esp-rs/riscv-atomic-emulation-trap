@@ -2,6 +2,9 @@
 name = "riscv-atomic-emulation-trap"
 version = "0.1.0"
 edition = "2021"
+description = "An atomic emulation trap handler for non atomic RISCV targets."
+keywords = ["RISCV", "emulation", "atomic"]
+authors = ["Scott Mabin <scott@mabez.dev>"]
 
 [dependencies]
 riscv = "0.7.0"
@@ -9,3 +12,6 @@ riscv-rt = "0.8.0"
 
 [build-dependencies]
 riscv-target = "0.1.2"
+
+[patch.crates-io]
+riscv-rt = { version = "0.8.0", git = "https://github.com/MabezDev/riscv-rt", branch = "trap-handler-override-improvements" }

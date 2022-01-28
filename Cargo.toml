@@ -5,6 +5,7 @@ edition = "2021"
 description = "An atomic emulation trap handler for non atomic RISCV targets."
 keywords = ["RISCV", "emulation", "atomic"]
 authors = ["Scott Mabin <scott@mabez.dev>"]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 riscv = "0.7.0"

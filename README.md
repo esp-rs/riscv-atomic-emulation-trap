@@ -1,18 +1,35 @@
 RISC-V atomic emulation trap handler
 
-A replacement trap handler to emumlate the atomic extension on chips that do not have it in hardware, to be used in conjunction with the `riscv-rt` crate.
+A replacement trap handler to emulate the atomic extension on silicon that does not have it. To be used in conjunction with the `riscv-rt` crate.
 
 ## Usage
 
-As simple as including the crate in your project:
+We need to tell the Rust compiler to enable atomic code generation. We can achieve this by either setting some `rustflags`, like so
+
+```toml
+rustflags = [
+# enable the atomic codegen option for RISCV
+"-C", "target-feature=+a",
+
+# tell the core library have atomics even though it's not specified in the target definition
+"--cfg", 'target_has_atomic="8"',
+"--cfg", 'target_has_atomic="16"',
+"--cfg", 'target_has_atomic="32"',
+"--cfg", 'target_has_atomic="ptr"',
+]
+```
+
+or it is also possible to compile for a similiar target that has the atomic extension enabled. For example, a `riscv32imc` could use the `riscv32imac` target.
+
+Finally, include this line in `main.rs`
+
 ```rust
 use riscv_atomic_emulation_trap as _;
 ```
 
 ## How it works
 
-Instead of using the real target (non-atomic) for a given chip, it's possible to target the closest target that also has the atomic extension. For example, the `esp32c3` is
-`riscv32imc`, therefore to use this crate you would use `riscv32imac`. The final binary will have (atomic) instructions that the hardware does not support;
+The final binary will have (atomic) instructions that the hardware does not support;
 when the hardware finds on of these instructions it will trap, this is where this crate comes in.
 
 This crate overrides the default trap handler of the `riscv-rt` crate. By doing so it is possible to decode the instruction, check if is an instruction we can emulate,

@@ -1,3 +1,0 @@
-
-[build]
-target = "riscv32imac-unknown-none-elf" # TODO remove, only for testing

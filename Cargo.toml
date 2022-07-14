@@ -9,8 +9,8 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/esp-rs/riscv-atomic-emulation-trap"
 
 [dependencies]
-riscv = "0.7.0"
-riscv-rt = "0.8.1"
+riscv = "0.8.0"
+riscv-rt = "0.9.0"
 
 [build-dependencies]
 riscv-target = "0.1.2"

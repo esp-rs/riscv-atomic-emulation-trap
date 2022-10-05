@@ -7,7 +7,7 @@ use riscv::{self, register::mcause};
 #[repr(C)]
 #[derive(Debug)]
 pub struct TrapFrame {
-    pub pc: usize,  // pc, x0 is useless
+    pub x0: usize,  // x0 needs to be zero
     pub ra: usize,  // x1
     pub sp: usize,  // x2
     pub gp: usize,  // x3
@@ -39,6 +39,7 @@ pub struct TrapFrame {
     pub t4: usize,  // x29
     pub t5: usize,  // x30
     pub t6: usize,  // x31
+    pub pc: usize,  // pc
 }
 
 impl TrapFrame {
@@ -209,4 +210,3 @@ pub extern "C" fn _start_trap_atomic_rust(frame: *mut TrapFrame) {
         }
     }
 }
-

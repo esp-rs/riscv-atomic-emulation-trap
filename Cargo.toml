@@ -1,6 +1,6 @@
 [package]
 name = "riscv-atomic-emulation-trap"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "An atomic emulation trap handler for non atomic RISCV targets."
 keywords = ["RISCV", "emulation", "atomic"]

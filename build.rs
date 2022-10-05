@@ -1,4 +1,3 @@
-
 extern crate riscv_target;
 
 use riscv_target::Target;

@@ -13,8 +13,9 @@
 .global _start_trap
 
 _start_trap:
-    addi sp, sp, -32*REGBYTES
+    addi sp, sp, -33*REGBYTES
 
+    STORE zero, 0*REGBYTES(sp)
     STORE ra, 1*REGBYTES(sp)
     STORE sp, 2*REGBYTES(sp)
     STORE gp, 3*REGBYTES(sp)
@@ -47,7 +48,7 @@ _start_trap:
     STORE t5, 30*REGBYTES(sp)
     STORE t6, 31*REGBYTES(sp)
     csrr t0, mepc
-    STORE t0, 0*REGBYTES(sp)
+    STORE t0, 32*REGBYTES(sp)
 
     add a0, sp, zero
     jal ra, _start_trap_atomic_rust
@@ -84,8 +85,8 @@ _start_trap:
     LOAD t5, 30*REGBYTES(sp)
     LOAD t6, 31*REGBYTES(sp)
     
-    LOAD t0, 0*REGBYTES(sp)
+    LOAD t0, 32*REGBYTES(sp)
     csrw mepc, t0
 
-    addi sp, sp, 32*REGBYTES
+    addi sp, sp, 33*REGBYTES
     mret

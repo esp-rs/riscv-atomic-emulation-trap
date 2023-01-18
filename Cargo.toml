@@ -1,16 +1,16 @@
 [package]
 name = "riscv-atomic-emulation-trap"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
-description = "An atomic emulation trap handler for non atomic RISCV targets."
-keywords = ["RISCV", "emulation", "atomic"]
+description = "An atomic emulation trap handler for non atomic RISC-V targets."
+keywords = ["riscv", "emulation", "atomic"]
 authors = ["Scott Mabin <scott@mabez.dev>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/esp-rs/riscv-atomic-emulation-trap"
 
 [dependencies]
-riscv = "0.10.0"
-riscv-rt = "0.10.0"
+riscv = "0.10.1"
+riscv-rt = "0.11.0"
 
 [build-dependencies]
 riscv-target = "0.1.2"

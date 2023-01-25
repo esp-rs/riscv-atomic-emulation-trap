@@ -1,6 +1,6 @@
 RISC-V atomic emulation trap handler
 
-A replacement trap handler to emulate the atomic extension on silicon that does not have it. To be used in conjunction with the `riscv-rt` crate.
+A replacement trap handler to emulate the atomic extension on silicon that does not have it.
 
 ## Usage
 
@@ -44,3 +44,7 @@ Disadvantages of this crate
 
 * Peformance penalty associated with context switching, emulating the instruction, then restoring the modified context. Based on limiting testing, you can expect a 2-4x slower execution compared to
 **natively** supported instructions.
+
+## Usage with riscv_rt
+
+By default the `riscv_rt` does not store enough of the registers to perform atomic emulation when an exception occurs. You must override the trapping behavior to capture platform registers `x0-x31`. You can see an example of how this was done in [`v0.3`](https://github.com/esp-rs/riscv-atomic-emulation-trap/tree/f5eacb4b84074617e2bde7e24b780636a974fae0) of this crate

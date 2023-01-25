@@ -1,76 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(test), no_std)]
 
-use riscv::{self, register::mcause};
-
-#[allow(missing_docs)]
-#[repr(C)]
-#[derive(Debug)]
-pub struct TrapFrame {
-    pub x0: usize,  // x0 needs to be zero
-    pub ra: usize,  // x1
-    pub sp: usize,  // x2
-    pub gp: usize,  // x3
-    pub tp: usize,  // x4
-    pub t0: usize,  // x5
-    pub t1: usize,  // x6
-    pub t2: usize,  // x7
-    pub fp: usize,  // x8
-    pub s1: usize,  // x9
-    pub a0: usize,  // x10
-    pub a1: usize,  // x11
-    pub a2: usize,  // x12
-    pub a3: usize,  // x13
-    pub a4: usize,  // x14
-    pub a5: usize,  // x15
-    pub a6: usize,  // x16
-    pub a7: usize,  // x17
-    pub s2: usize,  // x18
-    pub s3: usize,  // x19
-    pub s4: usize,  // x20
-    pub s5: usize,  // x21
-    pub s6: usize,  // x22
-    pub s7: usize,  // x23
-    pub s8: usize,  // x24
-    pub s9: usize,  // x25
-    pub s10: usize, // x26
-    pub s11: usize, // x27
-    pub t3: usize,  // x28
-    pub t4: usize,  // x29
-    pub t5: usize,  // x30
-    pub t6: usize,  // x31
-    pub pc: usize,  // pc
-}
-
-impl TrapFrame {
-    unsafe fn as_mut_words(&mut self) -> &mut [usize] {
-        core::slice::from_raw_parts_mut(
-            self as *mut _ as *mut _,
-            core::mem::size_of::<TrapFrame>() / core::mem::size_of::<usize>(),
-        )
-    }
-
-    fn as_riscv_rt_trap_frame(&self) -> riscv_rt::TrapFrame {
-        riscv_rt::TrapFrame {
-            ra: self.ra,
-            t0: self.t0,
-            t1: self.t1,
-            t2: self.t2,
-            t3: self.t3,
-            t4: self.t4,
-            t5: self.t5,
-            t6: self.t6,
-            a0: self.a0,
-            a1: self.a1,
-            a2: self.a2,
-            a3: self.a3,
-            a4: self.a4,
-            a5: self.a5,
-            a6: self.a6,
-            a7: self.a7,
-        }
-    }
-}
+pub const PLATFORM_REGISTER_LEN: usize = 32; // TODO will be less on r32e, handle at somepoint
 
 macro_rules! amo {
     ($frame:ident, $rs1:ident, $rs2:ident, $rd:ident, $operation:expr) => {
@@ -82,16 +13,24 @@ macro_rules! amo {
     };
 }
 
-pub unsafe fn atomic_emulation(frame: &mut TrapFrame) -> bool {
+/// is_atomic_instruction
+/// 
+/// Take the program counter address and returns whether the instruction at that address is an atomic one
+pub unsafe fn is_atomic_instruction(pc: usize) -> bool {
+    (*(pc as *const usize) & 0b1111111) == 0b0101111
+}
+
+/// atomic_emulation
+/// 
+/// Takes the exception program counter and an array of registers at point of exception with [`PLATFORM_REGISTER_LEN`] length.
+pub unsafe fn atomic_emulation(pc: usize, frame: &mut [usize; PLATFORM_REGISTER_LEN]) -> bool {
     static mut S_LR_ADDR: usize = 0;
 
-    // deref the addr to find the instruction we trapped on.
-    let insn: usize = *(frame.pc as *const _);
-    // TODO how to know if insn is executable?
-
-    if (insn & 0b1111111) != 0b0101111 {
+    if !is_atomic_instruction(pc) {
         return false;
     }
+
+    let insn: usize = *(pc as *const _);
 
     let reg_mask = 0b11111;
     // destination register
@@ -100,8 +39,6 @@ pub unsafe fn atomic_emulation(frame: &mut TrapFrame) -> bool {
     let rs1 = (insn >> 15) & reg_mask;
     // source 2 register
     let rs2 = (insn >> 20) & reg_mask;
-
-    let frame = frame.as_mut_words();
 
     match insn >> 27 {
         0b00010 => {
@@ -161,52 +98,4 @@ pub unsafe fn atomic_emulation(frame: &mut TrapFrame) -> bool {
     }
 
     true
-}
-
-use riscv_rt::Vector;
-
-// These are defined in the riscv-rt crate
-extern "Rust" {
-    #[doc(hidden)]
-    pub static __INTERRUPTS: [Vector; 12];
-}
-extern "C" {
-    fn ExceptionHandler(trap_frame: &riscv_rt::TrapFrame);
-    fn DefaultHandler();
-}
-
-#[link_section = ".trap.rust"]
-#[export_name = "_start_trap_atomic_rust"]
-#[doc(hidden)]
-pub extern "C" fn _start_trap_atomic_rust(frame: *mut TrapFrame) {
-    unsafe {
-        let cause = mcause::read();
-        let frame = &mut *frame;
-        match cause.cause() {
-            mcause::Trap::Exception(e) => match e {
-                mcause::Exception::IllegalInstruction => {
-                    if atomic_emulation(frame) {
-                        // successfull emulation, move the mepc
-                        frame.pc += core::mem::size_of::<usize>();
-                    } else {
-                        ExceptionHandler(&frame.as_riscv_rt_trap_frame())
-                    }
-                }
-                _ => ExceptionHandler(&frame.as_riscv_rt_trap_frame()),
-            },
-            mcause::Trap::Interrupt(_) => {
-                let code = cause.code();
-                if code < __INTERRUPTS.len() {
-                    let h = &__INTERRUPTS[code];
-                    if h.reserved == 0 {
-                        DefaultHandler();
-                    } else {
-                        (h.handler)();
-                    }
-                } else {
-                    DefaultHandler();
-                }
-            }
-        }
-    }
 }

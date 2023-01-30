@@ -12,10 +12,16 @@ rustflags = [
 "-C", "target-feature=+a",
 
 # tell the core library have atomics even though it's not specified in the target definition
+# CAS definitions
 "--cfg", 'target_has_atomic="8"',
 "--cfg", 'target_has_atomic="16"',
 "--cfg", 'target_has_atomic="32"',
 "--cfg", 'target_has_atomic="ptr"',
+# Load store definitions
+"--cfg", 'target_has_atomic_load_store="8"',
+"--cfg", 'target_has_atomic_load_store="16"',
+"--cfg", 'target_has_atomic_load_store="32"',
+"--cfg", 'target_has_atomic_load_store="ptr"',
 ]
 ```
 

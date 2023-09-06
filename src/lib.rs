@@ -19,18 +19,21 @@ pub fn is_atomic_instruction(insn: usize) -> bool {
     (insn & 0b1111111) == 0b0101111
 }
 
-/// Takes the instruction that triggered the exception and an array of
+/// Takes the program counter address that triggered the exception and an array of
 /// registers at point of exception with [`PLATFORM_REGISTER_LEN`] length.
 /// Returns true if the instruction was atomic and was emulated, false otherwise.
 /// 
 /// # Safety
 /// 
 /// This function is supposed to be called right after the instruction caused an exception.
+/// Thus, it assumes that the program counter is valid and points to a valid instruction.
 /// It also assumes that all the user registers were correctly saved and sorted in a trap frame.
 #[inline]
-pub unsafe fn atomic_emulation(insn: usize, frame: &mut [usize; PLATFORM_REGISTER_LEN]) -> bool {
+pub unsafe fn atomic_emulation(pc: usize, frame: &mut [usize; PLATFORM_REGISTER_LEN]) -> bool {
     static mut S_LR_ADDR: usize = 0;
 
+    // SAFETY: program counter is valid and points to a valid instruction.
+    let insn = unsafe { (pc as *const usize).read_unaligned() };
     if !is_atomic_instruction(insn) {
         return false;
     }

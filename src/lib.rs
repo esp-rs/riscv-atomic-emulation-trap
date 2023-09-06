@@ -22,9 +22,9 @@ pub fn is_atomic_instruction(insn: usize) -> bool {
 /// Takes the program counter address that triggered the exception and an array of
 /// registers at point of exception with [`PLATFORM_REGISTER_LEN`] length.
 /// Returns true if the instruction was atomic and was emulated, false otherwise.
-/// 
+///
 /// # Safety
-/// 
+///
 /// This function is supposed to be called right after the instruction caused an exception.
 /// Thus, it assumes that the program counter is valid and points to a valid instruction.
 /// It also assumes that all the user registers were correctly saved and sorted in a trap frame.
